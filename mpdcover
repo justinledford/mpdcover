@@ -1,0 +1,100 @@
+#!/usr/bin/python3
+
+# Displays the embedded album art for the current mp3 playing
+# on an mpd server.
+#
+# MPD Library must be accessible locally (e.g. network mount, sshfs)
+# in order for ffmpeg to export embedded image
+#
+# Requires:
+# GTK+3
+# gobject-introspection
+# ffmpeg
+# ImageMagick
+# mpc
+
+from gi.repository import Gtk
+from time import sleep
+import subprocess
+from threading import Thread
+
+
+IMAGE_PATH = "/tmp/cover.jpg"
+MPD_HOST = "192.168.1.108"
+REMOTE_BASE = "usbmount/usb0"
+LOCAL_BASE = "/mnt/voyage"
+
+
+class Window(Gtk.Window):
+    def __init__(self):
+        Gtk.Window.__init__(self)
+        export_image()
+        self.image = Gtk.Image()
+        self.image.set_from_file(IMAGE_PATH)
+        self.add(self.image)
+
+
+    def refresh_image(self):
+        self.image.set_from_file(IMAGE_PATH)
+
+
+def export_image():
+
+    # Get currently playing track from mpd
+    # Replaces remote file path with locally mounted path
+    # (Needed for ffmpeg to export image)
+    currenttrack = subprocess \
+        .check_output(["mpc", "-h", MPD_HOST,
+             "current",  "-f", "%file%"]) \
+        .decode("utf-8").rstrip() \
+        .replace(REMOTE_BASE, LOCAL_BASE)
+
+
+    # Export image file
+    subprocess.run(["ffmpeg", "-y", "-i", currenttrack, IMAGE_PATH],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # Resize and crop
+    subprocess.run(["convert", "-resize", "200x200^", "-gravity",
+                    "center", "-crop", "200x200+0+0", "+repage",
+                    IMAGE_PATH, IMAGE_PATH], stdout=subprocess.DEVNULL)
+
+stop = False
+def mpd_listener():
+    last_album = ""
+    while(not stop):
+        current_album = subprocess \
+            .check_output(["mpc", "-h", MPD_HOST,
+                 "current",  "-f", "%albumartist% %album%"]) \
+            .decode("utf-8").rstrip()
+
+        # Only refresh album art if different album
+        if current_album != last_album:
+            export_image()
+            win.refresh_image()
+        last_album = current_album
+
+        global mpc_idle
+        mpc_idle = subprocess.Popen(["mpc", "-h", MPD_HOST, 
+                                     "idle", "player"],
+                                     stdout=subprocess.DEVNULL)
+        mpc_idle.wait()
+
+
+# Stop mpd_listener thread on window close
+def shutdown(widget, data=None):
+    Gtk.main_quit()
+    global stop
+    stop = True
+    mpc_idle.terminate()
+
+# Create window
+win = Window()
+win.connect("delete-event", shutdown)
+win.show_all()
+
+# Set up threads and start
+window_thread = Thread(target=Gtk.main)
+listener_thread = Thread(target=mpd_listener)
+window_thread.start()
+listener_thread.start()
