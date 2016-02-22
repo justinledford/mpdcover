@@ -18,11 +18,17 @@ from time import sleep
 import subprocess
 from threading import Thread
 
-
+# Path to store tmp image file
 IMAGE_PATH = "/tmp/cover.jpg"
-MPD_HOST = "192.168.1.108"
-REMOTE_BASE = "usbmount/usb0"
-LOCAL_BASE = "/mnt/voyage"
+
+# IP address of mpd server
+MPD_HOST = ""
+
+# Remote base of current track's path
+REMOTE_BASE = ""
+
+# Local base of current track's path
+LOCAL_BASE = ""
 
 
 class Window(Gtk.Window):
